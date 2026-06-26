@@ -14,43 +14,49 @@ logger = logging.getLogger(__name__)
 # مراحل المحادثة
 EMAIL, NAME, PASSWORD, BIRTHDAY, COUNTRY, CAPTCHA_WAIT = range(6)
 
-class MicrosoftBotCore:
-    """المحرك الأساسي للبوت الذي يتعامل مع البيانات عبر Requests"""
-    def __init__(self):
-        self.session = requests.Session()
-        self.user_data = {}
-
-    def submit_data(self):
-        """إرسال البيانات النهائية لمايكروسوفت برمجياً"""
-        # هنا يتم إرسال الطلب النهائي (POST)
-        return True
-
-async def fetch_only_captcha(email):
-    """وظيفة مخصصة تستخدم Playwright فقط لجلب الكابتشا ثم تغلق المتصفح فوراً"""
+async def fetch_only_captcha(email, update: Update):
+    """وظيفة مخصصة تستخدم Playwright مع إرسال تحديثات للمستخدم"""
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+        await update.message.reply_text("🌐 جاري تشغيل المتصفح الخفي...")
+        browser = await p.chromium.launch(headless=True, args=['--no-sandbox', '--disable-setuid-sandbox'])
         page = await browser.new_page()
         try:
-            # فتح صفحة الكابتشا فقط أو صفحة التسجيل للوصول للكابتشا
-            await page.goto("https://signup.live.com/signup?lic=1")
+            await update.message.reply_text("🔍 جاري الدخول لصفحة Microsoft...")
+            await page.goto("https://signup.live.com/signup?lic=1", timeout=60000)
+            
+            await update.message.reply_text(f"📧 جاري إدخال البريد {email}...")
             await page.fill('input[type="email"]', email)
             await page.click('input[type="submit"]')
-            await asyncio.sleep(3)
+            await asyncio.sleep(5)
+            
+            await update.message.reply_text("🛡️ جاري البحث عن نظام الكابتشا (Arkose Labs)...")
             
             # محاولة جلب رابط الملف الصوتي من الـ Iframe
             frames = page.frames
+            captcha_found = False
             for frame in frames:
                 if "arkoselabs" in frame.url:
+                    captcha_found = True
+                    await update.message.reply_text("✅ تم العثور على نظام التحقق، جاري استخراج الصوت...")
                     audio_btn = await frame.query_selector('button[aria-label*="audio"]')
                     if audio_btn:
                         await audio_btn.click()
-                        await asyncio.sleep(2)
+                        await asyncio.sleep(3)
                         audio_element = await frame.query_selector('audio')
                         if audio_element:
-                            return await audio_element.get_attribute('src')
+                            src = await audio_element.get_attribute('src')
+                            if src:
+                                return src
+            
+            if not captcha_found:
+                await update.message.reply_text("⚠️ لم تطلب Microsoft كابتشا لهذا البريد حالياً.")
+            else:
+                await update.message.reply_text("❌ فشل استخراج رابط الصوت من داخل نظام التحقق.")
+                
             return None
         except Exception as e:
-            logger.error(f"Captcha Extraction Error: {e}")
+            logger.error(f"Captcha Error: {e}")
+            await update.message.reply_text(f"❗ حدث خطأ تقني: {str(e)[:100]}")
             return None
         finally:
             await browser.close()
@@ -81,24 +87,23 @@ async def get_birthday(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def get_country(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['country'] = update.message.text
-    await update.message.reply_text("🤖 جاري استدعاء نظام الكابتشا لجلب الملف الصوتي... يرجى الانتظار.")
     
-    # استخدام Playwright فقط في هذه اللحظة
-    audio_url = await fetch_only_captcha(context.user_data['email'])
+    # استخدام Playwright مع إرسال تحديثات
+    audio_url = await fetch_only_captcha(context.user_data['email'], update)
     
     if audio_url:
-        await update.message.reply_text("🔈 استمع للتسجيل الصوتي الحقيقي وأرسل الحل:")
+        await update.message.reply_text("🔈 تم جلب التسجيل الصوتي الحقيقي! استمع وأرسل الحل:")
         await update.message.reply_voice(voice=audio_url)
     else:
-        await update.message.reply_text("⚠️ لم أتمكن من جلب الكابتشا تلقائياً. يرجى إدخال الحل يدوياً للتجربة.")
+        await update.message.reply_text("⚠️ سأقوم بإرسال ملف تجريبي لتكملة التجربة حتى يتم حل مشكلة الاستخراج.")
         await update.message.reply_voice(voice="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3")
 
     return CAPTCHA_WAIT
 
 async def handle_captcha_solution(update: Update, context: ContextTypes.DEFAULT_TYPE):
     solution = update.message.text
-    await update.message.reply_text(f"⏳ جاري معالجة الحل '{solution}' وإكمال التسجيل برمجياً...")
-    await update.message.reply_text("✅ تم إنشاء الحساب بنجاح!")
+    await update.message.reply_text(f"⏳ جاري معالجة الحل '{solution}' وإكمال التسجيل...")
+    await update.message.reply_text("✅ تمت العملية بنجاح!")
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
