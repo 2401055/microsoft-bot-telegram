@@ -1,0 +1,8 @@
+[build]
+builder = "docker"
+dockerfile = "Dockerfile"
+
+[deploy]
+startCommand = "python microsoft_bot.py"
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 10
