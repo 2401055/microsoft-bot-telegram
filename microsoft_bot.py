@@ -6,7 +6,7 @@ from telegram import Update, Voice, PhotoSize
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
 
 # إعدادات البوت
-TOKEN = "8949983743:AAGz0jDY88_zN9Y-w4c2yayE2yt1MJrYXpc"
+TOKEN = os.getenv("BOT_TOKEN")
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
